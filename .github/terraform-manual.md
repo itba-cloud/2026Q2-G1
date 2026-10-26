@@ -39,8 +39,48 @@ codigo del PR y ejecutar `npm ci` y `npm run dev` desde `frontend/`.
 
 Los usuarios demo son `cliente.demo@example.com` y
 `repartidor.demo@example.com`. Sus contrasenas no se imprimen en los logs.
-Un administrador del Lab puede establecerlas desde Cognito, en el User Pool
-mostrado en el resumen de la ejecucion.
+Para leerlas desde una maquina propia con Terraform 1.16.4, AWS CLI y las
+credenciales vigentes del mismo Lab, entrar al codigo del PR #5 y ejecutar:
+
+```bash
+cd terraform/organization
+if [ ! -e override.tf ]; then
+  cat > override.tf <<'HCL'
+terraform {
+  backend "s3" {}
+}
+HCL
+else
+  echo 'Se conserva override.tf existente; verificar que configure backend S3.'
+fi
+cuenta=$(aws sts get-caller-identity --query Account --output text)
+terraform init -input=false \
+  -backend-config="bucket=itba-cloud-2026q2-g1-tfstate-${cuenta}-us-east-1" \
+  -backend-config='key=delivery/terraform.tfstate' \
+  -backend-config='region=us-east-1' \
+  -backend-config='encrypt=true' \
+  -backend-config='use_lockfile=true'
+terraform output -json usuarios_demo
+```
+
+`override.tf` es una configuracion local ignorada por Git. Si ya existe,
+conservarla y revisar su contenido antes de cambiarla. Usar siempre el mismo
+backend del workflow para administrar este despliegue; el flujo local del
+README original usa otro estado si no se agrega este backend.
+
+Las contrasenas se muestran solo en la terminal propia. No copiarlas en el
+README, issues o logs publicos. Cambiarlas directamente en Cognito dejaria
+desactualizado el valor que usa la prueba automatica del pipeline.
+
+## Evidencia del despliegue
+
+La ejecucion [40323713204](https://github.com/itba-cloud/2026Q2-G1/actions/runs/40323713204)
+creo 162 recursos y paso el smoke test de autenticacion y catalogo. Cuenta
+`712638924387`, region `us-east-1`. El User Pool es `us-east-1_v2d8BmjQx` y la
+API es https://nmvfaa3yhe.execute-api.us-east-1.amazonaws.com.
+
+La segunda ejecucion [40324823709](https://github.com/itba-cloud/2026Q2-G1/actions/runs/40324823709)
+reutilizo el estado y devolvio `No changes. Your infrastructure matches the configuration.`
 
 El smoke test comprueba autenticacion, catalogo y conexion Lambda -> RDS.
 Las condiciones de carrera y el manejo de pedidos rechazados encontrados en
