@@ -1,0 +1,75 @@
+{
+  "Comment": "Verifica el comprobante de entrega y cierra el pedido",
+  "StartAt": "MarcarEntregado",
+  "States": {
+    "MarcarEntregado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${marcar_entregado_arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "estado.$": "$.Payload.estado",
+        "cliente_id.$": "$.Payload.cliente_id"
+      },
+      "ResultPath": "$.resultado",
+      "Retry": [
+        {
+          "ErrorEquals": ["SinComprobante"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        },
+        ${reintento_lambda}
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["SinComprobante", "EntregaInvalida"],
+          "ResultPath": "$.error",
+          "Next": "NotificarEntregaRechazada"
+        }
+      ],
+      "Next": "NotificarEntregado"
+    },
+    "NotificarEntregado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "cliente_id.$": "$.resultado.cliente_id",
+          "repartidor_id.$": "$.repartidor_id",
+          "estado": "ENTREGADO"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "Fin" }
+      ],
+      "End": true
+    },
+    "NotificarEntregaRechazada": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "repartidor_id.$": "$.repartidor_id",
+          "estado": "ENTREGA_RECHAZADA",
+          "motivo.$": "$.error.Error"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "Fin" }
+      ],
+      "End": true
+    },
+    "Fin": {
+      "Type": "Succeed"
+    }
+  }
+}
